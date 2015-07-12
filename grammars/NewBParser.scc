@@ -41,6 +41,7 @@ States
 	shebang,
 	comment,
 	pragma,
+	description,
 	unit;
 
 
@@ -60,8 +61,10 @@ Tokens
 	{pragma} pragma_generated = 'generated';
 	{pragma} pragma_symbolic = 'symbolic';
 	{pragma} pragma_label = 'label';
+	{pragma->description} pragma_description = 'desc' | 'description';
 	{pragma} pragma_conversion = 'conversion';
 	{pragma} pragma_id_or_string = string_literal | identifier_literal;
+	{description->normal} pragma_free_text = all_chars* '*/';
 
 	{unit} unit_var = identifier_literal;
 	{unit} unit_content = string_literal;
@@ -577,18 +580,31 @@ Productions
 		{next_level} [pred]:predicate_x30 {-> pred.predicate};
 
 	predicate_x30 {-> predicate} =
-		[pred]:predicate_p40 {-> pred.predicate};
+		[pred]:predicate_pre_p40 {-> pred.predicate};
+
+	predicate_pre_p40 {-> predicate} =
+		{disjunct_e_p} [left]:expression_top logical_or [right]:predicate_pre_p40 {-> New predicate.disjunct_e_p(left.expression, right.predicate)} | // OR ist auch rechtsassoziativ, daher OK
+		{conjunct_e_p} [left]:expression_top conjunction [right]:predicate_pre_p40 {-> New predicate.conjunct_e_p(left.expression, right.predicate)} | // AND ist auch rechtsassoziativ, daher OK
+		// {disjunct_expr} [expr]:expression_top {-> New predicate.disjunct_expr(expr.expression)} | // nicht immer erlaubt
+		// {conjunct_expr} [expr]:expression_top {-> New predicate.conjunct_expr(expr.expression)} | // nicht immer erlaubt
+		{next_level} [pred]:predicate_p40 {-> pred.predicate};
 
 	predicate_p40 {-> predicate} =
 		{disjunct} [left]:predicate_p40 logical_or [right]:predicate_x40 {-> New predicate.disjunct(left.predicate, right.predicate)} |
+		{disjunct_p_e} [left]:predicate_p40 logical_or [right]:expression_top {-> New predicate.disjunct_p_e(left.predicate, right.expression)} |
 		{conjunct} [left]:predicate_p40 conjunction [right]:predicate_x40 {-> New predicate.conjunct(left.predicate, right.predicate)} |
+		{conjunct_p_e} [left]:predicate_p40 conjunction [right]:expression_top {-> New predicate.conjunct_p_e(left.predicate, right.expression)} |
 		{next_level} [pred]:predicate_x40 {-> pred.predicate};
 
 	predicate_x40 {-> predicate} =
-		{label} pragma_label [name]:pragma_id_or_string [predicate]:predicate_p60 {-> New predicate.label(name,predicate.predicate)} |
+		{label} pragma_label [name]:pragma_id_or_string [predicate]:predicate_x41 {-> New predicate.label(name, predicate.predicate)} |
 		{next_level} [pred]:predicate_x41 {-> pred.predicate};
 
 	predicate_x41 {-> predicate} =
+		{description} [predicate]:predicate_p60 pragma_description [content]:pragma_free_text {-> New predicate.description(content, predicate.predicate)} |
+		{next_level} [pred]:predicate_x42 {-> pred.predicate};
+
+	predicate_x42 {-> predicate} =
 		[pred]:predicate_p60 {-> pred.predicate};
 
 	predicate_p60 {-> predicate} =
@@ -1096,11 +1112,16 @@ Abstract Syntax Tree
 	/* Predicates */
 
 	predicate =
+		{description} [content]:pragma_free_text [predicate]:predicate |
 		{label} [name]:pragma_id_or_string [predicate]:predicate |
 		{substitution} [substitution]:substitution [predicate]:predicate |
 		{conjunct} [left]:predicate [right]:predicate |
+		{conjunct_p_e} [left]:predicate [right]:expression |
+		{conjunct_e_p} [left]:expression [right]:predicate |
 		{negation} [predicate]:predicate |
 		{disjunct} [left]:predicate [right]:predicate |
+		{disjunct_p_e} [left]:predicate [right]:expression |
+		{disjunct_e_p} [left]:expression [right]:predicate |
 		{implication} [left]:predicate [right]:predicate |
 		{equivalence} [left]:predicate [right]:predicate |
 		{forall} [identifiers]:expression* [implication]:predicate |
